@@ -1,0 +1,11 @@
+Artykuł testowy o sztucznej inteligencji
+
+KnowledgeBase (Retrieval-Augmented Generation) to zaawansowana technologia łącząca wyszukiwanie informacji z generowaniem tekstu. Pozwala na tworzenie bardziej dokładnych i kontekstowych odpowiedzi poprzez wykorzystanie zewnętrznych źródeł wiedzy.
+
+Główne komponenty systemu RAG:
+1. Indeksowanie dokumentów
+2. Wyszukiwanie semantyczne
+3. Generowanie odpowiedzi
+4. Zarządzanie faktami i encjami
+
+Ten artykuł służy do testowania wszystkich funkcjonalności systemu.
