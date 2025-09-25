@@ -128,6 +128,11 @@ class SearchService:
                 "id": "hybrid",
                 "name": "HybrydRAG",
                 "description": "Polityka RAG, która łączy TekstRAG, FaktRAG i GrafRAG (fuzja późna)."
+            },
+            {
+                "id": "smart_hybrid",
+                "name": "SmartHybrydRAG",
+                "description": "Inteligentny RAG z automatycznym wyborem strategii na podstawie analizy kosztów i wydajności."
             }
         ]
     

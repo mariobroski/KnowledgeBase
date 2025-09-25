@@ -10,6 +10,7 @@ from app.services.sql_graph_service import SQLGraphService, get_sql_graph_servic
 from app.db.database import get_db
 from app.services.janusgraph_service import janusgraph_service
 from app.db.database_models import Fact as FactModel, Fragment as FragmentModel
+from app.services.graph_consistency_service import GraphConsistencyService
 
 router = APIRouter()
 
@@ -73,6 +74,31 @@ async def get_relation(relation_id: int, service: GraphService = Depends(get_gra
     if not relation:
         raise HTTPException(status_code=404, detail="Relacja nie znaleziona")
     return relation
+
+@router.get("/relations/{relation_id}/evidence", response_model=Dict[str, Any])
+async def get_relation_evidence(
+    relation_id: int,
+    db: Session = Depends(get_db)
+):
+    """Zwróć listę faktów będących dowodami dla relacji."""
+    from app.db.database_models import Relation as RelationModel
+    rel = db.query(RelationModel).filter(RelationModel.id == relation_id).first()
+    if not rel:
+        raise HTTPException(status_code=404, detail="Relacja nie znaleziona")
+    facts = getattr(rel, 'evidence_facts', []) or []
+    return {
+        "relation_id": relation_id,
+        "evidence": [
+            {
+                "id": f.id,
+                "content": f.content,
+                "confidence": float(f.confidence or 0.0),
+                "source_fragment_id": f.source_fragment_id,
+            }
+            for f in facts
+        ],
+        "count": len(facts),
+    }
 
 @router.put("/relations/{relation_id}", response_model=Relation)
 async def update_relation(
@@ -272,6 +298,23 @@ async def get_graph_statistics(sql_service = Depends(get_sql_graph_service_dep))
         return stats
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Błąd pobierania statystyk: {str(e)}")
+
+
+@router.get("/consistency/report", response_model=Dict[str, Any])
+async def get_consistency_report(
+    orphans_limit: int = 100,
+    edges_no_evidence_limit: int = 200,
+    type_issues_limit: int = 200,
+    db: Session = Depends(get_db)
+):
+    """Raport spójności grafu (osierocone węzły, krawędzie bez dowodów, problemy z typami)."""
+    svc = GraphConsistencyService(db)
+    report = svc.report({
+        "orphans": orphans_limit,
+        "edges_no_evidence": edges_no_evidence_limit,
+        "type_issues": type_issues_limit,
+    })
+    return report
 
 
 @router.post("/rebuild")

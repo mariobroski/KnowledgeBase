@@ -187,6 +187,15 @@ class ArticleService:
             .filter(FragmentModel.article_id == article_id)
             .all()
         )
+
+    def get_fragment(self, fragment_id: int) -> Optional[FragmentModel]:
+        """Pobierz pojedynczy fragment po ID."""
+        return (
+            self.db.query(FragmentModel)
+            .options(joinedload(FragmentModel.article))
+            .filter(FragmentModel.id == fragment_id)
+            .first()
+        )
     
     def create_fragment(self, fragment_data: Dict[str, Any]) -> FragmentModel:
         """Utwórz nowy fragment

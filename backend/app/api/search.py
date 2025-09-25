@@ -20,6 +20,13 @@ class SearchRequest(BaseModel):
     limit: int = 5
     settings: Optional[Dict[str, Any]] = None
 
+class SmartSearchRequest(BaseModel):
+    query: str
+    budget_limit: Optional[float] = None
+    quality_threshold: Optional[float] = None
+    limit: int = 5
+    settings: Optional[Dict[str, Any]] = None
+
 class AnalyzeRequest(BaseModel):
     query: str
 
@@ -56,7 +63,7 @@ async def search(
     service: SearchService = Depends(get_search_service)
 ):
     """Wyszukaj informacje używając wybranej polityki RAG"""
-    if request.policy not in ["text", "facts", "graph", "hybrid", "auto"]:
+    if request.policy not in ["text", "facts", "graph", "hybrid", "smart_hybrid", "auto"]:
         raise HTTPException(status_code=400, detail="Nieprawidłowa polityka wyszukiwania")
     
     params: Dict[str, Any] = {"limit": request.limit}
@@ -64,6 +71,31 @@ async def search(
         params["settings"] = request.settings
 
     result = service.search(query=request.query, policy_type=request.policy, params=params)
+    return result
+
+@router.post("/smart", response_model=Dict[str, Any])
+async def smart_search(
+    request: SmartSearchRequest,
+    service: SearchService = Depends(get_search_service)
+):
+    """Inteligentne wyszukiwanie z automatycznym wyborem strategii RAG"""
+    params: Dict[str, Any] = {"limit": request.limit}
+    if request.settings:
+        params["settings"] = request.settings
+    
+    # Użyj SmartHybridRAG
+    result = service.search(
+        query=request.query,
+        policy_type="smart_hybrid",
+        params=params
+    )
+    
+    # Dodaj informacje o budżecie i jakości jeśli podane
+    if request.budget_limit is not None:
+        result["budget_limit"] = request.budget_limit
+    if request.quality_threshold is not None:
+        result["quality_threshold"] = request.quality_threshold
+    
     return result
 
 @router.post("/analyze", response_model=Dict[str, Any])

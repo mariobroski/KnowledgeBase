@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   Box,
   Typography,
@@ -61,6 +62,7 @@ interface GraphData {
     color?: string;
   }[];
   links: {
+    id?: string;
     source: string;
     target: string;
     type: string;
@@ -95,8 +97,14 @@ const Graph: React.FC = () => {
   const [rebuildingGraph, setRebuildingGraph] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
-  
+  const [minEdgeWeight, setMinEdgeWeight] = useState<number>(0);
+  const [evidenceOpen, setEvidenceOpen] = useState<boolean>(false);
+  const [evidenceItems, setEvidenceItems] = useState<Array<{id:number;content:string;confidence:number;source_fragment_id:number|null}>>([]);
+  const [consistencyOpen, setConsistencyOpen] = useState<boolean>(false);
+  const [consistencyReport, setConsistencyReport] = useState<any>(null);
+
   const graphRef = useRef<any>();
+  const navigate = useNavigate();
 
   const getEntityColor = useCallback((type: string): string => {
     const colorMap: Record<string, string> = {
@@ -125,9 +133,10 @@ const Graph: React.FC = () => {
       : entitiesData.filter(entity => entity.type === entityType);
 
     // Filtrowanie relacji według typu
-    const filteredRelations = relationType === 'all'
+    const filteredRelations = (relationType === 'all'
       ? relationsData
-      : relationsData.filter(relation => relation.type === relationType);
+      : relationsData.filter(relation => relation.type === relationType))
+      .filter(relation => relation.weight >= minEdgeWeight);
 
     // Tworzenie zbioru encji, które są używane w relacjach
     const usedEntities = new Set<string>();
@@ -155,6 +164,7 @@ const Graph: React.FC = () => {
          relation.target.toLowerCase().includes(searchTerm.toLowerCase()))
       )
       .map(relation => ({
+        id: relation.id.toString(),
         source: relation.source,
         target: relation.target,
         type: relation.type,
@@ -162,7 +172,7 @@ const Graph: React.FC = () => {
       }));
 
     setGraphData({ nodes, links });
-  }, [getEntityColor, searchTerm]);
+  }, [getEntityColor, searchTerm, minEdgeWeight]);
   useEffect(() => {
     const fetchGraphData = async () => {
       try {
@@ -190,6 +200,7 @@ const Graph: React.FC = () => {
         }));
         
         const links = visualizationData.edges.map((edge: any) => ({
+          id: edge.id?.toString?.() ?? undefined,
           source: edge.source.toString(),
           target: edge.target.toString(),
           type: edge.label,
@@ -288,6 +299,47 @@ const Graph: React.FC = () => {
     const value = event.target.value;
     setSearchTerm(value);
     updateGraphData(entities, relations, entityTypeFilter, relationTypeFilter);
+  };
+
+  const handleMinEdgeWeightChange = (_: any, value: number | number[]) => {
+    const v = Array.isArray(value) ? value[0] : value;
+    setMinEdgeWeight(v);
+    updateGraphData(entities, relations, entityTypeFilter, relationTypeFilter);
+  };
+
+  const handleLinkClick = async (link: any) => {
+    try {
+      const relId = typeof link.id === 'object' ? link.id?.toString?.() : link.id;
+      if (!relId) return;
+      const resp = await fetch(`http://localhost:8000/api/graph/relations/${relId}/evidence`);
+      if (!resp.ok) return;
+      const data = await resp.json();
+      setEvidenceItems((data.evidence || []).map((e: any) => ({
+        id: e.id,
+        content: e.content,
+        confidence: e.confidence,
+        source_fragment_id: e.source_fragment_id ?? null,
+      })));
+      setEvidenceOpen(true);
+    } catch (e) {
+      // noop
+    }
+  };
+
+  const handleOpenEvidenceFragment = async (fragmentId: number | null) => {
+    if (!fragmentId) return;
+    try {
+      const resp = await fetch(`http://localhost:8000/api/articles/fragments/${fragmentId}`);
+      if (!resp.ok) return;
+      const data = await resp.json();
+      const articleId = data.article_id;
+      if (articleId) {
+        navigate(`/articles/${articleId}`);
+        setEvidenceOpen(false);
+      }
+    } catch (e) {
+      // noop
+    }
   };
 
   const handleNodeClick = (node: any) => {
@@ -707,6 +759,17 @@ const Graph: React.FC = () => {
                 size="small"
                 sx={{ mb: 2 }}
               />
+              <Typography variant="subtitle2" gutterBottom>Minimalna waga krawędzi</Typography>
+              <Slider
+                value={minEdgeWeight}
+                min={0}
+                max={3}
+                step={0.1}
+                onChange={handleMinEdgeWeightChange}
+                valueLabelDisplay="auto"
+                size="small"
+                sx={{ mb: 2 }}
+              />
               <FormControlLabel
                 control={
                   <Switch
@@ -717,6 +780,18 @@ const Graph: React.FC = () => {
                 }
                 label="Pokaż etykiety"
               />
+              <Box mt={1}>
+                <Button size="small" variant="outlined" onClick={async () => {
+                  try {
+                    const resp = await fetch('http://localhost:8000/api/graph/consistency/report');
+                    const data = await resp.json();
+                    setConsistencyReport(data);
+                    setConsistencyOpen(true);
+                  } catch (e) {
+                    // noop
+                  }
+                }}>Raport spójności</Button>
+              </Box>
             </Box>
             
             <Box
@@ -823,6 +898,7 @@ const Graph: React.FC = () => {
                 }
               }}
               onNodeClick={handleNodeClick}
+              onLinkClick={handleLinkClick}
               cooldownTicks={100}
               onEngineStop={() => graphRef.current?.zoomToFit(400, 30)}
             />
@@ -895,6 +971,69 @@ const Graph: React.FC = () => {
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setOpenPathDialog(false)}>Zamknij</Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog open={evidenceOpen} onClose={() => setEvidenceOpen(false)} maxWidth="md" fullWidth>
+        <DialogTitle>Dowody dla relacji</DialogTitle>
+        <DialogContent>
+          {evidenceItems.length === 0 ? (
+            <Typography variant="body2">Brak powiązanych faktów.</Typography>
+          ) : (
+            evidenceItems.map((ev, idx) => (
+              <Card key={ev.id || idx} sx={{ mb: 1 }}>
+                <CardContent>
+                  <Typography variant="body2">({(ev.confidence ?? 0).toFixed(2)}) {ev.content}</Typography>
+                  {ev.source_fragment_id && (
+                    <Box mt={1}>
+                      <Button
+                        size="small"
+                        variant="outlined"
+                        onClick={() => handleOpenEvidenceFragment(ev.source_fragment_id!)}
+                      >
+                        Zobacz fragment źródłowy
+                      </Button>
+                    </Box>
+                  )}
+                </CardContent>
+              </Card>
+            ))
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setEvidenceOpen(false)}>Zamknij</Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog open={consistencyOpen} onClose={() => setConsistencyOpen(false)} maxWidth="md" fullWidth>
+        <DialogTitle>Raport spójności grafu</DialogTitle>
+        <DialogContent>
+          {!consistencyReport ? (
+            <Typography variant="body2">Ładowanie…</Typography>
+          ) : (
+            <Box>
+              <Typography variant="body2" gutterBottom>
+                Osierocone węzły: {consistencyReport.summary?.orphan_entities_count ?? 0}
+              </Typography>
+              <Typography variant="body2" gutterBottom>
+                Krawędzie bez dowodów: {consistencyReport.summary?.edges_without_evidence_count ?? 0}
+              </Typography>
+              <Typography variant="body2" gutterBottom>
+                Encje bez typu/Unknown: {consistencyReport.summary?.entities_with_type_issues_count ?? 0}
+              </Typography>
+              {Array.isArray(consistencyReport.orphans) && consistencyReport.orphans.length > 0 && (
+                <Box mt={2}>
+                  <Typography variant="subtitle2">Przykładowe osierocone encje</Typography>
+                  {consistencyReport.orphans.slice(0, 10).map((o: any) => (
+                    <Chip key={o.id} label={`${o.name} (${o.type || 'Nieznany'})`} size="small" sx={{ mr: 0.5, mb: 0.5 }} />
+                  ))}
+                </Box>
+              )}
+            </Box>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setConsistencyOpen(false)}>Zamknij</Button>
         </DialogActions>
       </Dialog>
     </Box>

@@ -7,7 +7,7 @@ from sqlalchemy import and_, or_, func
 import logging
 from datetime import datetime
 
-from app.db.database_models import Entity, Relation
+from app.db.database_models import Entity, Relation, Fact
 
 logger = logging.getLogger(__name__)
 
@@ -103,6 +103,15 @@ class SQLGraphService:
                     current = 0.0
                 existing_relation.weight = current + float(weight)
                 existing_relation.updated_at = datetime.utcnow()
+                # Zapisz dowód, jeśli podano
+                if evidence_fact_id is not None:
+                    try:
+                        fact = self.db.query(Fact).filter(Fact.id == int(evidence_fact_id)).first()
+                        if fact and fact not in getattr(existing_relation, 'evidence_facts', []):
+                            existing_relation.evidence_facts.append(fact)  # type: ignore[attr-defined]
+                    except Exception:
+                        # Ignoruj błąd dowodu – kluczowe jest utrzymanie relacji
+                        pass
                 self.db.commit()
                 return True
             else:
@@ -117,6 +126,18 @@ class SQLGraphService:
                 )
                 self.db.add(new_relation)
                 self.db.commit()
+                # Dopięcie dowodu, jeśli dostępny
+                if evidence_fact_id is not None:
+                    try:
+                        fact = self.db.query(Fact).filter(Fact.id == int(evidence_fact_id)).first()
+                        if fact:
+                            # Odśwież instancję relacji po commicie
+                            self.db.refresh(new_relation)
+                            new_relation.evidence_facts.append(fact)  # type: ignore[attr-defined]
+                            self.db.commit()
+                    except Exception:
+                        # Dowód opcjonalny – nie blokuj operacji
+                        pass
                 return True
                 
         except Exception as e:

@@ -272,7 +272,12 @@ class GraphRAG(RAGPolicy):
         for relation in relations:
             s = relation.source_entity.name if relation.source_entity else "Unknown"
             t = relation.target_entity.name if relation.target_entity else "Unknown"
-            w = relation.weight or 1.0
+            # Waga efektywna: bazowa waga + wkład liczby dowodów (jeśli dostępne)
+            try:
+                evidence_count = len(getattr(relation, 'evidence_facts', []) or [])
+            except Exception:
+                evidence_count = 0
+            w = (relation.weight or 1.0) + 0.1 * float(evidence_count)
             adjacency[s].append((t, relation.relation_type, w))
             adjacency[t].append((s, relation.relation_type, w))
         return adjacency

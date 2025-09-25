@@ -109,6 +109,17 @@ async def get_article_fragments(
     fragments = service.get_article_fragments(article_id=article_id)
     return fragments
 
+@router.get("/fragments/{fragment_id}", response_model=Fragment)
+async def get_fragment(
+    fragment_id: int,
+    service: ArticleService = Depends(get_article_service)
+):
+    """Pobierz fragment po ID (z identyfikatorem artykułu)."""
+    fr = service.get_fragment(fragment_id=fragment_id)
+    if not fr:
+        raise HTTPException(status_code=404, detail="Fragment nie znaleziony")
+    return fr
+
 @router.post("/{article_id}/process")
 async def process_article(
     article_id: int,

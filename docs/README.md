@@ -31,14 +31,20 @@ System zarządzania wiedzą oparty na technologii RAG (Retrieval-Augmented Gener
    - Analiza semantyczna
 
 3. **System RAG**
-   - Inteligentne wyszukiwanie
-   - Generowanie odpowiedzi
-   - Kontekstowe rekomendacje
+   - **TextRAG**: wyszukiwanie semantyczne w wektorach
+   - **FactRAG**: wyszukiwanie faktograficzne w bazie relacyjnej
+   - **GraphRAG**: wyszukiwanie w grafie wiedzy
+   - **HybridRAG**: strategia łączona wszystkich trybów
+   - **Auto-policy selection**: inteligentny wybór strategii
+   - Generowanie odpowiedzi z cytowaniem źródeł
 
 4. **Benchmarki i Ewaluacja**
-   - Testy wydajności
-   - Metryki jakości
-   - Analiza wyników
+   - **RAGBench**: import i ewaluacja benchmarków naukowych
+   - **TRACe Metrics**: relevance, utilization, adherence, completeness
+   - **Advanced Metrics**: hallucination score, factual accuracy
+   - **Literature Comparison**: porównania z wynikami z literatury
+   - **Trend Analysis**: analiza trendów wydajności
+   - **Quality Reports**: automatyczne raporty jakości
 
 ## Instalacja i Uruchomienie
 
@@ -97,7 +103,33 @@ System został zmigrowany z komercyjnych rozwiązań na open source:
 ### Testowanie
 - Backend: `pytest`
 - Frontend: `npm test`
-- Ewaluacja: `cd eval && python run_evaluation.py`
+- Ewaluacja: `cd eval && python run_full_pipeline.py`
+
+### Ewaluacja i Benchmarki
+
+#### Szybki test
+```bash
+cd eval
+python run_full_pipeline.py --quick FinQA text
+```
+
+#### Pełny pipeline ewaluacji
+```bash
+cd eval
+python run_full_pipeline.py --full
+```
+
+#### Demonstracja zaawansowanych funkcji
+```bash
+cd eval
+python demo_advanced_features.py
+```
+
+#### Dostępne benchmarki
+- **RAGBench**: FinQA, TAT-QA, TechQA, CUAD, EManual
+- **FinanceBench**: FinanceBench, FinancialQA, FinNLP
+- **Metryki**: TRACe, RAGAS, Advanced Metrics
+- **Analiza**: Literature Comparison, Trend Analysis
 
 ## Licencja
 
