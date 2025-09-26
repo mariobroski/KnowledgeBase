@@ -54,6 +54,7 @@ System umożliwia zarządzanie wiedzą poprzez:
    - TekstRAG - wyszukiwanie oparte na fragmentach tekstu
    - FaktRAG - wyszukiwanie oparte na faktach
    - GrafRAG - wyszukiwanie oparte na grafie wiedzy
+   - AutoRAG - automatyczny wybór polityki (heurystyka lub router ML)
 
 5. **Analiza danych**
    - Dashboard z kluczowymi metrykami
@@ -101,3 +102,25 @@ System umożliwia zarządzanie wiedzą poprzez:
    npm install
    npm start
    ```
+
+## Router ML dla wyboru polityki RAG
+
+Domyślnie auto-wybór polityki korzysta z heurystyk. Aby użyć modelu ML:
+
+1. Zbierz dane treningowe – tabela `search_queries` powinna zawierać zapytania i kolumnę `policy` z faktycznie użytymi politykami.
+2. Wytrenuj model:
+
+   ```bash
+   python backend/eval/train_policy_router.py --out backend/models/policy_router.joblib
+   ```
+
+   (zamiast `poetry run` użyj własnego środowiska; parametr `--min-per-class` kontroluje minimalną liczbę przykładów na klasę.)
+
+3. Ustaw zmienne środowiskowe:
+
+   ```env
+   POLICY_ROUTER_MODE=ml
+   POLICY_ROUTER_MODEL_PATH=backend/models/policy_router.joblib
+   ```
+
+4. Restartuj backend. Jeśli model nie jest dostępny lub wystąpi błąd, system automatycznie przełączy się na heurystyki.

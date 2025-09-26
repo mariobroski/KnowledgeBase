@@ -187,6 +187,17 @@ class ArticleService:
             .filter(FragmentModel.article_id == article_id)
             .all()
         )
+    
+    def get_article_fragments(self, article_id: int) -> List[FragmentModel]:
+        """Pobierz fragmenty artykułu (alias dla get_fragments)
+        
+        Args:
+            article_id: ID artykułu
+            
+        Returns:
+            Lista fragmentów
+        """
+        return self.get_fragments(article_id)
 
     def get_fragment(self, fragment_id: int) -> Optional[FragmentModel]:
         """Pobierz pojedynczy fragment po ID."""

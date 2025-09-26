@@ -67,6 +67,10 @@ class Settings(BaseSettings):
     WEAVIATE_PORT: int = int(os.getenv("WEAVIATE_PORT", "8080"))
     FAISS_INDEX_PATH: str = os.getenv("FAISS_INDEX_PATH", "./faiss_index")
     JANUSGRAPH_RETRY_ATTEMPTS: int = int(os.getenv("JANUSGRAPH_RETRY_ATTEMPTS", "3"))
+
+    # Policy router (RAG orchestrator)
+    POLICY_ROUTER_MODE: str = os.getenv("POLICY_ROUTER_MODE", "heuristic")  # heuristic | ml
+    POLICY_ROUTER_MODEL_PATH: Optional[str] = os.getenv("POLICY_ROUTER_MODEL_PATH")
     
     # RAG Parameters - configurable via admin panel
     CHUNK_SIZE: int = int(os.getenv("CHUNK_SIZE", "1000"))

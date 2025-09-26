@@ -1,16 +1,55 @@
+import logging
 import re
-from typing import Dict, List, Tuple
 from enum import Enum
+from typing import Dict, List, Tuple
+
+from app.core.config import settings
+
+try:  # Import opcjonalny – tylko jeśli dostępny model ML
+    from app.services.policy_router_ml import MLPolicyRouter
+except Exception:  # pragma: no cover - pozwala na fallback w środowiskach bez joblib
+    MLPolicyRouter = None  # type: ignore
+
+
+logger = logging.getLogger(__name__)
+
 
 class PolicyType(str, Enum):
     TEXT = "text"
     FACTS = "facts"
     GRAPH = "graph"
+    HYBRID = "hybrid"
+
+
+DEFAULT_POLICY_ORDER = [
+    PolicyType.TEXT.value,
+    PolicyType.FACTS.value,
+    PolicyType.GRAPH.value,
+    PolicyType.HYBRID.value,
+]
 
 class PolicySelector:
     """Serwis do automatycznego wyboru polityki RAG na podstawie analizy zapytania"""
     
     def __init__(self):
+        self.mode = (settings.POLICY_ROUTER_MODE or "heuristic").lower().strip()
+        self._ml_router = None
+        if self.mode == "ml" and MLPolicyRouter is not None:
+            model_path = settings.POLICY_ROUTER_MODEL_PATH
+            if model_path:
+                try:
+                    self._ml_router = MLPolicyRouter(model_path)
+                    logger.info("PolicySelector: używam modelu ML (%s)", model_path)
+                except Exception as exc:  # pragma: no cover - fallback
+                    logger.warning("PolicySelector: nie udało się załadować modelu ML (%s) – używam heurystyk.", exc)
+                    self.mode = "heuristic"
+            else:
+                logger.warning("PolicySelector: POLICY_ROUTER_MODEL_PATH nie ustawiono – używam heurystyk")
+                self.mode = "heuristic"
+        elif self.mode == "ml" and MLPolicyRouter is None:
+            logger.warning("PolicySelector: brak obsługi joblib – tryb ML niedostępny, używam heurystyk")
+            self.mode = "heuristic"
+
         # Słowa kluczowe dla różnych typów zapytań
         self.fact_keywords = [
             # Pytania o fakty
@@ -62,14 +101,23 @@ class PolicySelector:
         ]
     
     def analyze_query(self, query: str) -> Dict[str, float]:
-        """Analizuje zapytanie i zwraca prawdopodobieństwa dla każdej polityki"""
+        """Analizuje zapytanie i zwraca prawdopodobieństwa dla każdej polityki."""
+        if self._ml_router is not None:
+            try:
+                ml_scores = self._ml_router.predict_proba(query)
+                normalized = self._normalize_scores(ml_scores)
+                if normalized:
+                    return normalized
+            except Exception as exc:  # pragma: no cover - fallback bezpieczeństwa
+                logger.warning("PolicySelector: błąd predykcji ML (%s) – używam heurystyk", exc)
+
         query_lower = query.lower()
         
         # Inicjalizacja wyników
         scores = {
-            PolicyType.TEXT: 0.0,
-            PolicyType.FACTS: 0.0,
-            PolicyType.GRAPH: 0.0
+            PolicyType.TEXT.value: 0.0,
+            PolicyType.FACTS.value: 0.0,
+            PolicyType.GRAPH.value: 0.0
         }
         
         # Analiza słów kluczowych
@@ -81,9 +129,9 @@ class PolicySelector:
         structure_scores = self._analyze_question_structure(query_lower)
         
         # Kombinacja wyników
-        scores[PolicyType.FACTS] = fact_score * 0.7 + structure_scores['facts'] * 0.3
-        scores[PolicyType.GRAPH] = graph_score * 0.7 + structure_scores['graph'] * 0.3
-        scores[PolicyType.TEXT] = text_score * 0.7 + structure_scores['text'] * 0.3
+        scores[PolicyType.FACTS.value] = fact_score * 0.7 + structure_scores['facts'] * 0.3
+        scores[PolicyType.GRAPH.value] = graph_score * 0.7 + structure_scores['graph'] * 0.3
+        scores[PolicyType.TEXT.value] = text_score * 0.7 + structure_scores['text'] * 0.3
         
         # Normalizacja wyników
         total_score = sum(scores.values())
@@ -92,7 +140,7 @@ class PolicySelector:
                 scores[policy] = scores[policy] / total_score
         else:
             # Domyślnie TekstRAG jeśli nie ma jasnych wskaźników
-            scores[PolicyType.TEXT] = 1.0
+            scores[PolicyType.TEXT.value] = 1.0
         
         return scores
     
@@ -159,12 +207,13 @@ class PolicySelector:
         
         # Znajdź politykę z najwyższym wynikiem
         best_policy = max(scores.keys(), key=lambda k: scores[k])
-        confidence = scores[best_policy]
+        confidence = scores.get(best_policy, 0.0)
         
         # Jeśli pewność jest niska, domyślnie wybierz TekstRAG
         if confidence < confidence_threshold:
-            best_policy = PolicyType.TEXT
-            confidence = scores[PolicyType.TEXT]
+            fallback = PolicyType.TEXT.value
+            confidence = scores.get(fallback, confidence)
+            best_policy = fallback
         
         return best_policy, confidence, scores
     
@@ -174,7 +223,8 @@ class PolicySelector:
         policy_names = {
             "text": "TekstRAG",
             "facts": "FaktRAG", 
-            "graph": "GrafRAG"
+            "graph": "GrafRAG",
+            "hybrid": "HybrydRAG",
         }
         
         selected_name = policy_names.get(selected_policy, selected_policy)
@@ -199,3 +249,20 @@ class PolicySelector:
             explanation += f" {second_name} była bliska alternatywą ({second_best[1]:.1%})."
         
         return explanation
+
+    def _normalize_scores(self, scores: Dict[str, float]) -> Dict[str, float]:
+        # Uzupełnij brakujące polityki zerem i znormalizuj do sumy 1.
+        normalized: Dict[str, float] = {}
+        for policy in DEFAULT_POLICY_ORDER:
+            if policy in scores:
+                normalized[policy] = float(scores[policy])
+        # Dodaj nieznane polityki
+        for policy, value in scores.items():
+            if policy not in normalized:
+                normalized[policy] = float(value)
+
+        total = sum(normalized.values())
+        if total > 0:
+            normalized = {k: v / total for k, v in normalized.items()}
+
+        return normalized
